@@ -10,11 +10,21 @@ import { env } from "../config/env";
  * diner-registration write (and every future financial write in LOOP 08) to
  * be a single atomic transaction. We use `pg` directly for that, and reserve
  * supabase-js for Auth verification and Realtime publish.
+ *
+ * SSL: Supabase's Postgres REQUIRES SSL for any connection from outside its
+ * own network — without this, every pool.connect()/query() fails (this bit
+ * us in production: it manifested as 500s on every endpoint that touches
+ * Postgres, first noticed on /reports/*). Local/test databases (e.g. a
+ * Postgres running in Docker for TEST_DATABASE_URL) typically don't support
+ * SSL at all, so we only require it for non-localhost hosts.
  */
+const isLocalDb = /localhost|127\.0\.0\.1/.test(env.databaseUrl);
+
 export const pool = new Pool({
   connectionString: env.databaseUrl,
   max: 10,
   idleTimeoutMillis: 30_000,
+  ssl: isLocalDb ? undefined : { rejectUnauthorized: false },
 });
 
 /**
