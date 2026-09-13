@@ -1,4 +1,5 @@
 import express from "express";
+import cors from "cors";
 import serviceLineRouter from "./api/routes/serviceLine";
 import paymentsRouter from "./api/routes/payments";
 import cashSessionsRouter from "./api/routes/cashSessions";
@@ -9,6 +10,7 @@ import reportsRouter from "./api/routes/reports";
 import meRouter from "./api/routes/me";
 import { requestLogger } from "./middleware/requestLogger";
 import { errorHandler } from "./middleware/errorHandler";
+import { env } from "./config/env";
 
 /**
  * App construction lives here, separate from server.ts's app.listen(),
@@ -17,6 +19,14 @@ import { errorHandler } from "./middleware/errorHandler";
  * ever binding a port or touching a live database.
  */
 export const app = express();
+
+// CORS: this API is called from a browser SPA on a different origin
+// (Vercel) than the API itself (Render) — without this, every request
+// fails at the browser's preflight check before it even reaches Express.
+// See config/env.ts for why "*" is safe here (no cookie-based auth).
+const allowedOrigins = env.allowedOrigins === "*" ? "*" : env.allowedOrigins.split(",").map((o) => o.trim());
+app.use(cors({ origin: allowedOrigins }));
+
 app.use(express.json());
 app.use(requestLogger);
 
