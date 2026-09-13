@@ -19,12 +19,8 @@ export default function ServerScreen({ session }: { session: Session }) {
   const currentKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
-    apiFetch(session, "/reports/pending-collections")
-      .then((r) => {
-        const seen = new Map<string, string>();
-        r.obligations.forEach((o: { tableId: string; tableLabel: string }) => seen.set(o.tableId, o.tableLabel));
-        setTables(Array.from(seen, ([id, label]) => ({ id, label })));
-      })
+    apiFetch(session, "/tables")
+      .then((r) => setTables(r.tables))
       .catch(() => {});
   }, [session]);
 
@@ -58,7 +54,7 @@ export default function ServerScreen({ session }: { session: Session }) {
   return (
     <div style={{ padding: 20, maxWidth: 420, margin: "0 auto" }}>
       <div style={{ fontSize: 12, color: colors.textMuted, marginBottom: 8 }}>
-        MESA (UUID por ahora — sin selector visual todavía)
+        MESA
       </div>
       <select
         value={tableId}
@@ -120,10 +116,6 @@ export default function ServerScreen({ session }: { session: Session }) {
           {feedback.text}
         </div>
       )}
-      <div style={{ marginTop: 16, fontSize: 11, color: colors.textDim }}>
-        Nota: todavía no hay endpoint para crear mesas desde la app — el selector se llena solo con mesas que ya
-        tienen algo pendiente.
-      </div>
     </div>
   );
 }
