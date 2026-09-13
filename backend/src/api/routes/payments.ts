@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { authenticate } from "../../middleware/auth";
+import { pool } from "../../db/pool";
 import { requireRole } from "../../middleware/requireRole";
 import { registerPayment } from "../../services/paymentService";
 import { requestVoid, authorizeVoid } from "../../services/voidService";
