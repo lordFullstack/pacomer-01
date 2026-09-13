@@ -1,38 +1,49 @@
-import express from "express";
-import cors from "cors";
-import serviceLineRouter from "./api/routes/serviceLine";
-import paymentsRouter from "./api/routes/payments";
-import cashSessionsRouter from "./api/routes/cashSessions";
-import creditsRouter from "./api/routes/credits";
-import suppliersRouter from "./api/routes/suppliers";
-import receiptsRouter from "./api/routes/receipts";
-import reportsRouter from "./api/routes/reports";
-import meRouter from "./api/routes/me";
-import tablesRouter from "./api/routes/tables";
-import { requestLogger } from "./middleware/requestLogger";
-import { errorHandler } from "./middleware/errorHandler";
-import { env } from "./config/env";
+import React, { useState } from "react";
+import { Session } from "./types";
+import LoginScreen from "./screens/LoginScreen";
+import ServerScreen from "./screens/ServerScreen";
+import CashierScreen from "./screens/CashierScreen";
+import { colors } from "./lib/theme";
 
-export const app = express();
+/**
+ * Root router. Owns only: auth state, and which screen a given role sees.
+ * All business logic lives inside each loop's own screen module —
+ * LOOP 06 (ServerScreen) and LOOP 07 (CashierScreen) — not here.
+ */
+export default function App() {
+  const [session, setSession] = useState<Session | null>(null);
+  const [view, setView] = useState<"servidor" | "cajero">("cajero");
 
-const allowedOrigins = env.allowedOrigins === "*" ? "*" : env.allowedOrigins.split(",").map((o) => o.trim());
-app.use(cors({ origin: allowedOrigins }));
+  if (!session) return <LoginScreen onLogin={setSession} />;
 
-app.use(express.json());
-app.use(requestLogger);
+  const canSeeServer = session.role === "servidor" || session.role === "admin";
+  const canSeeCashier = ["cajero", "supervisor", "admin"].includes(session.role);
 
-app.get("/health", (_req, res) => {
-  res.json({ status: "ok" });
-});
-
-app.use("/service-line", serviceLineRouter);
-app.use("/payments", paymentsRouter);
-app.use("/cash-sessions", cashSessionsRouter);
-app.use("/credits", creditsRouter);
-app.use("/suppliers", suppliersRouter);
-app.use("/receipts", receiptsRouter);
-app.use("/reports", reportsRouter);
-app.use("/me", meRouter);
-app.use("/tables", tablesRouter);
-
-app.use(errorHandler);
+  return (
+    <div style={{ minHeight: "100vh", background: colors.bg, color: colors.text, fontFamily: "'Segoe UI', ui-sans-serif, sans-serif" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 20px", borderBottom: `1px solid ${colors.border}` }}>
+        <div style={{ fontWeight: 800 }}>FAST TRACK</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12, color: colors.textMuted }}>
+          {session.email} · {session.role}
+          {canSeeServer && canSeeCashier && (
+            <select
+              value={view}
+              onChange={(e) => setView(e.target.value as "servidor" | "cajero")}
+              style={{ background: colors.surface, color: colors.text, border: `1px solid ${colors.border}`, borderRadius: 6, padding: "4px 6px" }}
+            >
+              <option value="cajero">Vista cajero</option>
+              <option value="servidor">Vista servidor</option>
+            </select>
+          )}
+          <button
+            onClick={() => setSession(null)}
+            style={{ background: "none", border: `1px solid ${colors.border}`, color: colors.textMuted, borderRadius: 6, padding: "4px 8px", cursor: "pointer" }}
+          >
+            Salir
+          </button>
+        </div>
+      </div>
+      {view === "servidor" && canSeeServer ? <ServerScreen session={session} /> : <CashierScreen session={session} />}
+    </div>
+  );
+}
