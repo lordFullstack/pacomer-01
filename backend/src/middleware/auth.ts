@@ -59,3 +59,8 @@ export async function authenticate(
       tenantId: appUser.tenant_id,
       role: appUser.role,
     };
+    next();
+  } catch (err) {
+    next(err);
+  }
+}
