@@ -46,7 +46,7 @@ export async function authenticate(
     // changes take effect immediately without reissuing tokens.
     const { data: appUser, error: appUserError } = await supabase
       .from("app_users")
-      .select("tenant_id, role")
+      .select("id, tenant_id, role")
       .eq("auth_user_id", data.user.id)
       .single();
 
@@ -55,12 +55,7 @@ export async function authenticate(
     }
 
     req.user = {
-      id: data.user.id,
+      id: appUser.id,
       tenantId: appUser.tenant_id,
       role: appUser.role,
     };
-    next();
-  } catch (err) {
-    next(err);
-  }
-}
