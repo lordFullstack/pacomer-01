@@ -2,23 +2,26 @@ import React, { useState } from "react";
 import { Session } from "../types";
 import { colors } from "../lib/theme";
 import ReportsScreen from "./admin/ReportsScreen";
+import ClientsScreen from "./admin/ClientsScreen";
 import ProvidersScreen from "./admin/ProvidersScreen";
 import CreditsScreen from "./admin/CreditsScreen";
 import ReceiptsScreen from "./admin/ReceiptsScreen";
 
-type Tab = "reportes" | "proveedores" | "creditos" | "recibos";
+type Tab = "reportes" | "clientes" | "proveedores" | "creditos" | "recibos";
 
 const tabs: Array<{ key: Tab; label: string }> = [
   { key: "reportes", label: "Reportes" },
+  { key: "clientes", label: "Clientes" },
   { key: "proveedores", label: "Proveedores" },
   { key: "creditos", label: "Créditos" },
   { key: "recibos", label: "Recibos" },
 ];
 
 /**
- * Panel administrativo — agrupa las 4 secciones que no forman parte del
- * flujo diario de servidor/cajero: reportes, proveedores, créditos y
- * recibos. Visible solo para supervisor/admin (controlado en App.tsx).
+ * Panel administrativo — agrupa las secciones que no forman parte del
+ * flujo diario de servidor/cajero: reportes, clientes, proveedores,
+ * créditos y recibos. Visible solo para supervisor/admin (controlado en
+ * App.tsx, que hasta ahora nunca montaba esta pantalla).
  */
 export default function AdminScreen({ session }: { session: Session }) {
   const [tab, setTab] = useState<Tab>("reportes");
@@ -46,6 +49,7 @@ export default function AdminScreen({ session }: { session: Session }) {
         ))}
       </div>
       {tab === "reportes" && <ReportsScreen session={session} />}
+      {tab === "clientes" && <ClientsScreen session={session} />}
       {tab === "proveedores" && <ProvidersScreen session={session} />}
       {tab === "creditos" && <CreditsScreen session={session} />}
       {tab === "recibos" && <ReceiptsScreen session={session} />}

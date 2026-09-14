@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Session } from "../../types";
 import { apiFetch, genIdempotencyKey, money } from "../../lib/api";
 import { colors, btnPrimary, inputStyle, btnGhost } from "../../lib/theme";
@@ -8,18 +8,34 @@ interface SupplierBalance {
   name: string;
   outstandingBalance: string;
 }
+interface SupplierStatement {
+  supplier: { id: string; name: string; paymentTerms: "contado" | "semanal" | "quincenal"; createdAt: string };
+  outstandingBalance: string;
+  purchases: Array<{ id: string; amount: string; createdAt: string }>;
+  payments: Array<{ id: string; appliedAmount: string; createdAt: string }>;
+}
+
+const statementRow: React.CSSProperties = { display: "flex", justifyContent: "space-between", fontSize: 13, padding: "6px 0", borderBottom: `1px solid ${colors.border}` };
 
 /**
  * Proveedores y compras (rutas /suppliers/*). No existe un GET /suppliers
  * que liste todos — el backend solo expone balances de los que tienen
  * saldo pendiente (/reports/payables) y consulta por id individual, así
  * que la lista de "conocidos" que se muestra aquí sale de ese reporte.
+ * Al seleccionar un proveedor se pide su estado de cuenta completo
+ * (GET /suppliers/:id) para ver historial de compras y abonos.
  */
 export default function ProvidersScreen({ session }: { session: Session }) {
   const [suppliers, setSuppliers] = useState<SupplierBalance[]>([]);
+  const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [loading, setLoading] = useState(false);
+
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [statement, setStatement] = useState<SupplierStatement | null>(null);
+  const [statementError, setStatementError] = useState<string | null>(null);
+  const [statementLoading, setStatementLoading] = useState(false);
 
   // Nueva compra
   const [supplierMode, setSupplierMode] = useState<"existing" | "new">("new");
@@ -46,6 +62,27 @@ export default function ProvidersScreen({ session }: { session: Session }) {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const filtered = useMemo(
+    () => suppliers.filter((s) => s.name.toLowerCase().includes(query.trim().toLowerCase())),
+    [suppliers, query]
+  );
+
+  const openStatement = async (id: string) => {
+    setSelectedId(id);
+    setStatement(null);
+    setStatementError(null);
+    setStatementLoading(true);
+    try {
+      const s = await apiFetch(session, `/suppliers/${id}`);
+      setStatement(s);
+    } catch (e: unknown) {
+      setStatementError(e instanceof Error ? e.message : "No se pudo cargar el estado de cuenta");
+    } finally {
+      setStatementLoading(false);
+    }
+  };
+  const closeStatement = () => setSelectedId(null);
 
   const registerPurchase = async () => {
     setLoading(true);
@@ -151,14 +188,28 @@ export default function ProvidersScreen({ session }: { session: Session }) {
       )}
       {error && <div style={{ color: colors.dangerText, fontSize: 13, marginBottom: 14 }}>{error}</div>}
 
-      <div style={{ fontSize: 12, color: colors.textMuted, marginBottom: 8 }}>SALDOS PENDIENTES ({suppliers.length})</div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
+        <div style={{ fontSize: 12, color: colors.textMuted }}>SALDOS PENDIENTES ({filtered.length})</div>
+        <button onClick={load} style={{ ...btnGhost, padding: "4px 8px" }}>
+          Actualizar
+        </button>
+      </div>
+      <input
+        placeholder="Buscar proveedor por nombre…"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        style={{ ...inputStyle, marginBottom: 12 }}
+      />
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {suppliers.map((s) => (
+        {filtered.map((s) => (
           <div key={s.supplierId} style={{ padding: 12, borderRadius: 10, border: `1px solid ${colors.border}`, background: colors.surface }}>
-            <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700, marginBottom: 8 }}>
+            <button
+              onClick={() => openStatement(s.supplierId)}
+              style={{ background: "none", border: "none", padding: 0, width: "100%", cursor: "pointer", display: "flex", justifyContent: "space-between", fontWeight: 700, marginBottom: 8, color: colors.text, textAlign: "left" }}
+            >
               <span>{s.name}</span>
               <span style={{ color: colors.dangerText }}>{money(s.outstandingBalance)}</span>
-            </div>
+            </button>
             {payingId === s.supplierId ? (
               <div>
                 <input
@@ -189,8 +240,65 @@ export default function ProvidersScreen({ session }: { session: Session }) {
             )}
           </div>
         ))}
-        {suppliers.length === 0 && <div style={{ color: colors.textDim, fontSize: 13 }}>Sin saldos pendientes.</div>}
+        {filtered.length === 0 && <div style={{ color: colors.textDim, fontSize: 13 }}>Sin saldos pendientes.</div>}
       </div>
+
+      {selectedId && (
+        <div
+          onClick={closeStatement}
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, zIndex: 10 }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ padding: 14, borderRadius: 10, border: `1px solid ${colors.border}`, background: colors.surface, width: "min(440px, 100%)", maxHeight: "85vh", overflowY: "auto" }}
+          >
+            {statementLoading && <div style={{ color: colors.textDim, fontSize: 13 }}>Cargando estado de cuenta…</div>}
+            {statementError && <div style={{ color: colors.dangerText, fontSize: 13 }}>{statementError}</div>}
+            {statement && (
+              <>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+                  <div>
+                    <div style={{ fontWeight: 800, fontSize: 16 }}>{statement.supplier.name}</div>
+                    <div style={{ fontSize: 12, color: colors.textMuted, textTransform: "capitalize" }}>Términos de pago: {statement.supplier.paymentTerms}</div>
+                  </div>
+                  <button onClick={closeStatement} style={btnGhost}>
+                    Cerrar
+                  </button>
+                </div>
+
+                <div style={{ padding: 10, borderRadius: 8, background: colors.bg, border: `1px solid ${colors.border}`, marginBottom: 14 }}>
+                  <div style={{ fontSize: 11, color: colors.textMuted }}>Saldo pendiente</div>
+                  <div style={{ fontWeight: 800, color: Number(statement.outstandingBalance) > 0 ? colors.dangerText : colors.success }}>
+                    {money(statement.outstandingBalance)}
+                  </div>
+                </div>
+
+                <div style={{ fontSize: 12, color: colors.textMuted, marginBottom: 8 }}>HISTORIAL DE COMPRAS ({statement.purchases.length})</div>
+                <div style={{ marginBottom: 14 }}>
+                  {statement.purchases.map((p) => (
+                    <div key={p.id} style={statementRow}>
+                      <span style={{ color: colors.textMuted }}>{new Date(p.createdAt).toLocaleDateString("es-CO")}</span>
+                      <span>{money(p.amount)}</span>
+                    </div>
+                  ))}
+                  {statement.purchases.length === 0 && <div style={{ color: colors.textDim, fontSize: 12 }}>Sin compras.</div>}
+                </div>
+
+                <div style={{ fontSize: 12, color: colors.textMuted, marginBottom: 8 }}>HISTORIAL DE ABONOS ({statement.payments.length})</div>
+                <div>
+                  {statement.payments.map((p) => (
+                    <div key={p.id} style={statementRow}>
+                      <span style={{ color: colors.textMuted }}>{new Date(p.createdAt).toLocaleDateString("es-CO")}</span>
+                      <span style={{ color: colors.success }}>{money(p.appliedAmount)}</span>
+                    </div>
+                  ))}
+                  {statement.payments.length === 0 && <div style={{ color: colors.textDim, fontSize: 12 }}>Sin abonos.</div>}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
