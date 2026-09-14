@@ -28,27 +28,28 @@ interface PendingVoidRequest {
   requested_at: string;
 }
 
+interface CashStatus {
+  sessionId: string | null;
+  status: string;
+  expectedCash: string | null;
+}
+
 const SELF_VOID_WINDOW_SECONDS = 120;
 
-/**
- * LOOP 07 — Frontend Cajero.
- * 07_FRONTEND_CASHIER.md: cola de pendientes, cobro individual/conjunto,
- * efectivo/transferencia/mixto con cambio calculado por el backend.
- * Now also: cobros recientes con auto-anulación (BR-016) y panel de
- * autorización para supervisor/admin (BR-017).
- */
 export default function CashierScreen({ session }: { session: Session }) {
   const [pending, setPending] = useState<PendingObligation[]>([]);
   const [recentPayments, setRecentPayments] = useState<RecentPayment[]>([]);
   const [pendingVoidRequests, setPendingVoidRequests] = useState<PendingVoidRequest[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [cashStatus, setCashStatus] = useState<{ status: string; expectedCash: string | null } | null>(null);
+  const [cashStatus, setCashStatus] = useState<CashStatus | null>(null);
   const [openingCash, setOpeningCash] = useState("");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [cashInput, setCashInput] = useState("");
   const [transferInput, setTransferInput] = useState("");
   const [voidReasonFor, setVoidReasonFor] = useState<string | null>(null);
   const [voidReasonText, setVoidReasonText] = useState("");
+  const [closeModalOpen, setCloseModalOpen] = useState(false);
+  const [countedCash, setCountedCash] = useState("");
   const [ticket, setTicket] = useState<{ text: string; ok: boolean } | null>(null);
   const [loading, setLoading] = useState(false);
   const [, forceTick] = useState(0);
@@ -56,7 +57,7 @@ export default function CashierScreen({ session }: { session: Session }) {
   const canAuthorize = session.role === "supervisor" || session.role === "admin";
 
   useEffect(() => {
-    const t = setInterval(() => forceTick((n) => n + 1), 1000); // drives self-void countdowns
+    const t = setInterval(() => forceTick((n) => n + 1), 1000);
     return () => clearInterval(t);
   }, []);
 
@@ -108,6 +109,26 @@ export default function CashierScreen({ session }: { session: Session }) {
       setTicket({ ok: false, text: e instanceof Error ? e.message : "Error" });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const closeCashSession = async () => {
+    if (!cashStatus?.sessionId) return;
+    setLoading(true);
+    try {
+      const out = await apiFetch(session, `/cash-sessions/${cashStatus.sessionId}/close`, {
+        method: "POST",
+        body: JSON.stringify({ countedCash: countedCash || "0.00" }),
+      });
+      setTicket({ ok: true, text: `Caja cerrada. Diferencia: ${money(out.difference)}` });
+      setCloseModalOpen(false);
+      setCountedCash("");
+      await refresh();
+    } catch (e: unknown) {
+      setTicket({ ok: false, text: e instanceof Error ? e.message : "Error" });
+    } finally {
+      setLoading(false);
+      setTimeout(() => setTicket(null), 3000);
     }
   };
 
@@ -201,12 +222,40 @@ export default function CashierScreen({ session }: { session: Session }) {
 
   return (
     <div style={{ padding: 20, maxWidth: 480, margin: "0 auto" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, fontSize: 13 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, fontSize: 13 }}>
         <div>
           Caja: <strong style={{ color: noSession ? colors.dangerText : colors.success }}>{noSession ? "SIN ABRIR" : cashStatus!.status}</strong>
           {cashStatus?.expectedCash && <span style={{ color: colors.textMuted, marginLeft: 8 }}>esperado {money(cashStatus.expectedCash)}</span>}
         </div>
       </div>
+
+      {!noSession && (
+        <button
+          onClick={() => setCloseModalOpen(true)}
+          style={{ marginBottom: 16, padding: "6px 12px", borderRadius: 6, border: `1px solid ${colors.border}`, background: "transparent", color: colors.textMuted, fontSize: 12, cursor: "pointer" }}
+        >
+          Cerrar caja / cuadre
+        </button>
+      )}
+
+      {closeModalOpen && (
+        <div style={{ marginBottom: 16, padding: 12, borderRadius: 10, border: `1px solid ${colors.border}`, background: colors.surface }}>
+          <div style={{ fontSize: 12, color: colors.textMuted, marginBottom: 6 }}>
+            Efectivo contado (esperado: {cashStatus?.expectedCash ? money(cashStatus.expectedCash) : "—"})
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input
+              value={countedCash}
+              onChange={(e) => setCountedCash(e.target.value.replace(/[^\d.]/g, ""))}
+              placeholder="0.00"
+              style={{ flex: 1, padding: 8, borderRadius: 6, background: colors.bg, border: `1px solid ${colors.border}`, color: colors.text }}
+            />
+            <button onClick={closeCashSession} disabled={loading} style={{ padding: "8px 14px", borderRadius: 6, border: "none", background: colors.danger, color: colors.text, fontWeight: 700 }}>
+              Cerrar
+            </button>
+          </div>
+        </div>
+      )}
 
       {noSession && (
         <div style={{ marginBottom: 16, padding: 12, borderRadius: 10, border: `1px solid ${colors.border}`, background: colors.surface }}>
@@ -389,4 +438,4 @@ export default function CashierScreen({ session }: { session: Session }) {
       )}
     </div>
   );
-}
+  }
