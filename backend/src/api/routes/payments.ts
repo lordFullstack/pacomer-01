@@ -92,8 +92,6 @@ router.post("/", authenticate, requireRole("cajero", "supervisor", "admin"), asy
       throw new ValidationError(parsed.error.issues.map((i) => i.message).join("; "));
     }
 
-    // BR-014: reject credit here with a clear pointer, rather than silently
-    // accepting it — credit has its own lifecycle owned by LOOP 09.
     if (parsed.data.tenders.some((t) => t.method === "credito")) {
       throw new CreditNotAllowedOnPaymentsError();
     }
@@ -131,51 +129,7 @@ const authorizeSchema = z.object({ decision: z.enum(["AUTHORIZED", "DENIED"]) })
 
 /**
  * POST /payments/void-requests/:id/authorize — Step 2 of BR-015.
- * BR-017: 'admin' or 'supervisor' may
-    // BR-014: reject credit here with a clear pointer, rather than silently
-    // accepting it — credit has its own lifecycle owned by LOOP 09.
-    if (parsed.data.tenders.some((t) => t.method === "credito")) {
-      throw new CreditNotAllowedOnPaymentsError();
-    }
-
-    const output = await registerPayment(req.user!.id, req.user!.tenantId, {
-      ...parsed.data,
-      tenders: parsed.data.tenders as Array<{ method: "efectivo" | "transferencia"; amount: string }>,
-    });
-    res.status(201).json(output);
-  } catch (err) {
-    next(err);
-  }
-});
-
-const voidRequestSchema = z.object({ reason: z.string().min(3) });
-
-/**
- * POST /payments/:id/void — Step 1 of BR-015, with the BR-016 self-void
- * shortcut evaluated server-side: if the requester is the payment's own
- * creator and it's within the self-void window, this executes immediately
- * (202 body will show status SELF_EXECUTED). Otherwise it creates a
- * PENDING_AUTHORIZATION request for a supervisor/admin to resolve below.
- */
-router.post("/:id/void", authenticate, requireRole("cajero", "supervisor", "admin"), async (req, res, next) => {
-  try {
-    const parsed = voidRequestSchema.safeParse(req.body);
-    if (!parsed.success) {
-      throw new ValidationError(parsed.error.issues.map((i) => i.message).join("; "));
-    }
-    const result = await requestVoid(req.user!.id, req.user!.tenantId, req.params.id, parsed.data.reason);
-    res.status(202).json(result);
-  } catch (err) {
-    next(err);
-  }
-});
-
-const authorizeSchema = z.object({ decision: z.enum(["AUTHORIZED", "DENIED"]) });
-
-/**
- * POST /payments/void-requests/:id/authorize — Step 2 of BR-015.
- * BR-017: 'admin' (owner) or a designated 'supervisor' may authorize.
- * Authorizing executes the reversal immediately.
+ * BR-017: 'admin' or 'supervisor' may authorize.
  */
 router.post(
   "/void-requests/:id/authorize",
