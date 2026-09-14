@@ -16,13 +16,20 @@ const router = Router();
  */
 router.get("/", authenticate, async (req, res, next) => {
   try {
-    const result = await pool.query<{ id: string; label: string }>(
-      `SELECT id, label FROM tables
-       WHERE tenant_id = $1
-       ORDER BY NULLIF(regexp_replace(label, '[^0-9]', '', 'g'), '')::int NULLS LAST, label`,
+    const result = await pool.query<{ id: string; label: string; has_open_account: boolean }>(
+      `SELECT t.id, t.label,
+              EXISTS(
+                SELECT 1 FROM table_sessions ts
+                WHERE ts.table_id = t.id AND ts.tenant_id = t.tenant_id AND ts.status = 'OPEN'
+              ) AS has_open_account
+       FROM tables t
+       WHERE t.tenant_id = $1
+       ORDER BY NULLIF(regexp_replace(t.label, '[^0-9]', '', 'g'), '')::int NULLS LAST, t.label`,
       [req.user!.tenantId]
     );
-    res.json({ tables: result.rows });
+    res.json({
+      tables: result.rows.map((r) => ({ id: r.id, label: r.label, hasOpenAccount: r.has_open_account })),
+    });
   } catch (err) {
     next(err);
   }

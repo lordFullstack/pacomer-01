@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Session } from "../types";
 import { apiFetch, genIdempotencyKey } from "../lib/api";
-import { colors, btnPrimary, inputStyle } from "../lib/theme";
+import { colors, btnPrimary, btnGhost, inputStyle } from "../lib/theme";
 
 /**
  * LOOP 06 — Frontend Servidor.
@@ -12,10 +12,10 @@ export default function ServerScreen({ session }: { session: Session }) {
   const [amount, setAmount] = useState("");
   const [tableId, setTableId] = useState("");
   const [paymentMode, setPaymentMode] = useState<"individual" | "conjunto">("individual");
-  const [name, setName] = useState("");
+  const [note, setNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null);
-  const [tables, setTables] = useState<Array<{ id: string; label: string }>>([]);
+  const [tables, setTables] = useState<Array<{ id: string; label: string; hasOpenAccount: boolean }>>([]);
   const currentKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -23,6 +23,13 @@ export default function ServerScreen({ session }: { session: Session }) {
       .then((r) => setTables(r.tables))
       .catch(() => {});
   }, [session]);
+
+  const reset = () => {
+    setTableId("");
+    setAmount("");
+    setNote("");
+    setPaymentMode("individual");
+  };
 
   const submit = async () => {
     if (!tableId || !amount) return;
@@ -35,13 +42,12 @@ export default function ServerScreen({ session }: { session: Session }) {
           tableId,
           amount,
           paymentMode,
-          name: name || undefined,
+          descriptor: note || undefined,
           idempotencyKey: currentKeyRef.current,
         }),
       });
       setFeedback({ ok: true, text: `Registrado — obligación ${out.obligationId.slice(0, 8)}…` });
-      setAmount("");
-      setName("");
+      reset();
       currentKeyRef.current = null;
     } catch (e: unknown) {
       setFeedback({ ok: false, text: e instanceof Error ? e.message : "Error" });
@@ -53,23 +59,41 @@ export default function ServerScreen({ session }: { session: Session }) {
 
   return (
     <div style={{ padding: 20, maxWidth: 420, margin: "0 auto" }}>
-      <div style={{ fontSize: 12, color: colors.textMuted, marginBottom: 8 }}>
+      <div style={{ fontSize: 12, color: colors.textMuted, marginBottom: 8, letterSpacing: 0.5 }}>
         MESA
       </div>
-      <select
-        value={tableId}
-        onChange={(e) => setTableId(e.target.value)}
-        style={{ ...inputStyle, marginBottom: 14 }}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fill, minmax(52px, 1fr))",
+          gap: 8,
+          marginBottom: 16,
+        }}
       >
-        <option value="">— elige mesa —</option>
-        {tables.map((t) => (
-          <option key={t.id} value={t.id}>
-            {t.label}
-          </option>
-        ))}
-      </select>
+        {tables.map((t) => {
+          const selected = t.id === tableId;
+          return (
+            <button
+              key={t.id}
+              onClick={() => setTableId(t.id)}
+              style={{
+                aspectRatio: "1 / 1",
+                borderRadius: 8,
+                border: selected ? `2px solid ${colors.accent}` : "1px solid transparent",
+                background: t.hasOpenAccount ? colors.success : colors.surface,
+                color: t.hasOpenAccount ? colors.bg : colors.text,
+                fontWeight: 700,
+                fontSize: 14,
+                cursor: "pointer",
+              }}
+            >
+              {t.label}
+            </button>
+          );
+        })}
+      </div>
 
-      <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
         {(["individual", "conjunto"] as const).map((m) => (
           <button
             key={m}
@@ -90,16 +114,38 @@ export default function ServerScreen({ session }: { session: Session }) {
         ))}
       </div>
 
-      <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nombre (opcional)" style={{ ...inputStyle, marginBottom: 14 }} />
+      <div style={{ fontSize: 12, color: colors.textMuted, marginBottom: 8, letterSpacing: 0.5 }}>
+        VALOR
+      </div>
       <input
         value={amount}
         onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ""))}
-        placeholder="Valor"
-        style={{ ...inputStyle, marginBottom: 14, fontSize: 20, fontWeight: 800 }}
+        placeholder="$0"
+        style={{
+          ...inputStyle,
+          marginBottom: 16,
+          fontSize: 24,
+          fontWeight: 800,
+          textAlign: "right",
+        }}
       />
 
-      <button onClick={submit} disabled={submitting || !tableId || !amount} style={{ ...btnPrimary, width: "100%", opacity: submitting ? 0.6 : 1 }}>
-        {submitting ? "REGISTRANDO…" : "REGISTRAR"}
+      <div style={{ fontSize: 12, color: colors.textMuted, marginBottom: 8, letterSpacing: 0.5 }}>
+        NOTA <span style={{ color: colors.textDim, fontWeight: 400 }}>(opcional)</span>
+      </div>
+      <textarea
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        placeholder="Sin sal, apurado…"
+        rows={3}
+        style={{ ...inputStyle, marginBottom: 24, resize: "none", fontFamily: "inherit" }}
+      />
+
+      <button onClick={submit} disabled={submitting || !tableId || !amount} style={{ ...btnPrimary, width: "100%", opacity: submitting ? 0.6 : 1, marginBottom: 10 }}>
+        {submitting ? "REGISTRANDO…" : "✓ Registrar"}
+      </button>
+      <button onClick={reset} disabled={submitting} style={{ ...btnGhost, width: "100%", padding: "12px 0", fontSize: 14, fontWeight: 700 }}>
+        Limpiar
       </button>
 
       {feedback && (
