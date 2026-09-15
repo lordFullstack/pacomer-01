@@ -80,8 +80,8 @@ export default function ServerScreen({ session }: { session: Session }) {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(48px, 1fr))",
-            gap: 6,
+            gridTemplateColumns: "repeat(auto-fill, minmax(52px, 1fr))",
+            gap: 8,
           }}
         >
           {tables.map((t) => {
@@ -91,14 +91,13 @@ export default function ServerScreen({ session }: { session: Session }) {
                 key={t.id}
                 onClick={() => setTableId(t.id)}
                 style={{
-                  padding: "6px 2px",
-                  borderRadius: 6,
+                  aspectRatio: "1 / 1",
+                  borderRadius: 8,
                   border: selected ? `2px solid ${colors.accent}` : "1px solid transparent",
                   background: t.hasOpenAccount ? colors.success : colors.surface,
                   color: t.hasOpenAccount ? colors.bg : colors.text,
                   fontWeight: 700,
-                  fontSize: 12,
-                  lineHeight: 1.2,
+                  fontSize: 14,
                   cursor: "pointer",
                 }}
               >
@@ -159,7 +158,7 @@ export default function ServerScreen({ session }: { session: Session }) {
         />
       </div>
 
-      <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+      <div>
         <div style={sectionLabel}>
           NOTA <span style={{ color: colors.textDim, fontWeight: 400 }}>(opcional)</span>
         </div>
@@ -167,7 +166,8 @@ export default function ServerScreen({ session }: { session: Session }) {
           value={note}
           onChange={(e) => setNote(e.target.value)}
           placeholder="Sin sal, apurado…"
-          style={{ ...inputStyle, padding: "8px 12px", resize: "none", fontFamily: "inherit", flex: 1, minHeight: 36 }}
+          rows={2}
+          style={{ ...inputStyle, padding: "8px 12px", resize: "none", fontFamily: "inherit" }}
         />
       </div>
 
