@@ -1,10 +1,12 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Session } from "./types";
 import LoginScreen from "./screens/LoginScreen";
 import ServerScreen from "./screens/ServerScreen";
 import CashierScreen from "./screens/CashierScreen";
 import AdminScreen from "./screens/AdminScreen";
 import { colors } from "./lib/theme";
+import { fetchMe } from "./lib/api";
+import { clearStoredSession, loadStoredSession, storeSession } from "./lib/sessionStorage";
 
 type View = "servidor" | "cajero" | "admin";
 
@@ -15,9 +17,47 @@ type View = "servidor" | "cajero" | "admin";
  */
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
+  const [checkingSession, setCheckingSession] = useState(true);
   const [view, setView] = useState<View>("cajero");
 
-  if (!session) return <LoginScreen onLogin={setSession} />;
+  // Restaura la sesión al refrescar. Revalida contra /me en vez de confiar
+  // ciegamente en lo guardado: si el token ya expiró o el rol cambió, no
+  // queremos dejar a alguien operando con datos viejos.
+  useEffect(() => {
+    const stored = loadStoredSession();
+    if (!stored) {
+      setCheckingSession(false);
+      return;
+    }
+    fetchMe(stored.accessToken)
+      .then((me) => {
+        setSession({ ...stored, userId: me.userId, tenantId: me.tenantId, role: me.role as Session["role"] });
+      })
+      .catch(() => {
+        clearStoredSession();
+      })
+      .finally(() => setCheckingSession(false));
+  }, []);
+
+  const handleLogin = (s: Session) => {
+    storeSession(s);
+    setSession(s);
+  };
+
+  const handleLogout = () => {
+    clearStoredSession();
+    setSession(null);
+  };
+
+  if (checkingSession) {
+    return (
+      <div style={{ height: "100dvh", display: "flex", alignItems: "center", justifyContent: "center", background: colors.bg, color: colors.textMuted, fontFamily: "'Segoe UI', ui-sans-serif, sans-serif", fontSize: 13 }}>
+        Verificando sesión…
+      </div>
+    );
+  }
+
+  if (!session) return <LoginScreen onLogin={handleLogin} />;
 
   const canSeeServer = session.role === "servidor" || session.role === "admin";
   const canSeeCashier = ["cajero", "supervisor", "admin"].includes(session.role);
@@ -63,7 +103,7 @@ export default function App() {
             </select>
           )}
           <button
-            onClick={() => setSession(null)}
+            onClick={handleLogout}
             style={{ background: "none", border: `1px solid ${colors.border}`, color: colors.textMuted, borderRadius: 6, padding: "4px 8px", cursor: "pointer" }}
           >
             Salir
