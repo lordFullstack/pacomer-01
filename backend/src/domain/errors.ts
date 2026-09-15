@@ -33,6 +33,12 @@ export class TableNotFoundError extends DomainError {
   }
 }
 
+export class TableSessionNotOpenError extends DomainError {
+  constructor(tableId: string) {
+    super(`Table ${tableId} has no open session`, "TABLE_SESSION_NOT_OPEN", 409);
+  }
+}
+
 export class TenantIsolationError extends DomainError {
   constructor() {
     super(

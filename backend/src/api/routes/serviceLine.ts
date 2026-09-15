@@ -18,14 +18,15 @@ const registerDinerSchema = z.object({
 
 /**
  * POST /service-line/diners
- * 05_BACKEND.md priority endpoint. Only 'servidor' and 'admin' may call it
- * (13_SECURITY_ROLES.md: least privilege — a cajero has no reason to
- * register a new diner from the cash register view).
+ * 05_BACKEND.md priority endpoint. 'servidor' registers diners from the
+ * floor; 'cajero'/'supervisor' may also open a table or add a diner
+ * directly from the register (CashierScreen's "+ Agregar persona"), same
+ * as they can already collect payment for one — 'admin' as always.
  */
 router.post(
   "/diners",
   authenticate,
-  requireRole("servidor", "admin"),
+  requireRole("servidor", "cajero", "supervisor", "admin"),
   async (req, res, next) => {
     try {
       const parsed = registerDinerSchema.safeParse(req.body);

@@ -12,6 +12,7 @@ export default function ServerScreen({ session }: { session: Session }) {
   const [amount, setAmount] = useState("");
   const [tableId, setTableId] = useState("");
   const [paymentMode, setPaymentMode] = useState<"individual" | "conjunto">("individual");
+  const [name, setName] = useState("");
   const [note, setNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null);
@@ -27,6 +28,7 @@ export default function ServerScreen({ session }: { session: Session }) {
   const reset = () => {
     setTableId("");
     setAmount("");
+    setName("");
     setNote("");
     setPaymentMode("individual");
   };
@@ -42,6 +44,7 @@ export default function ServerScreen({ session }: { session: Session }) {
           tableId,
           amount,
           paymentMode,
+          name: name || undefined,
           descriptor: note || undefined,
           idempotencyKey: currentKeyRef.current,
         }),
@@ -113,6 +116,16 @@ export default function ServerScreen({ session }: { session: Session }) {
           </button>
         ))}
       </div>
+
+      <div style={{ fontSize: 12, color: colors.textMuted, marginBottom: 8, letterSpacing: 0.5 }}>
+        NOMBRE <span style={{ color: colors.textDim, fontWeight: 400 }}>(opcional)</span>
+      </div>
+      <input
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        placeholder="Nombre del comensal"
+        style={{ ...inputStyle, marginBottom: 16 }}
+      />
 
       <div style={{ fontSize: 12, color: colors.textMuted, marginBottom: 8, letterSpacing: 0.5 }}>
         VALOR
