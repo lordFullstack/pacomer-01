@@ -96,9 +96,10 @@ router.get("/:id/session", authenticate, requireRole("cajero", "supervisor", "ad
       amount: string;
       status: string;
       remaining_cents: string;
+      created_at: string;
     }>(
       `SELECT
-          d.id AS diner_id, po.id AS obligation_id, d.name, d.descriptor,
+          d.id AS diner_id, po.id AS obligation_id, d.name, d.descriptor, d.created_at,
           po.amount, po.status,
           (po.amount * 100)::bigint
             - coalesce((
@@ -127,6 +128,7 @@ router.get("/:id/session", authenticate, requireRole("cajero", "supervisor", "ad
         amount: r.amount,
         status: r.status,
         remaining: (Number(r.remaining_cents) / 100).toFixed(2),
+        createdAt: r.created_at,
       })),
     });
   } catch (err) {

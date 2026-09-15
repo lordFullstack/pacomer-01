@@ -12,6 +12,7 @@ export const colors = {
   success: "#8FBF8A",
   danger: "#B3452F",
   dangerText: "#D98A6E",
+  info: "#4C8DF5",
 };
 
 export const btnPrimary: CSSProperties = {

@@ -43,7 +43,11 @@ interface TableDiner {
   amount: string;
   status: "PENDING" | "PARTIAL" | "CREDIT" | "SETTLED";
   remaining: string;
+  createdAt: string;
 }
+
+const occupiedGreen = "#0F7A44";
+const occupiedGreenBorder = "#0A5C33";
 
 interface TableDetail {
   tableId: string;
@@ -306,7 +310,7 @@ export default function CashierScreen({ session }: { session: Session }) {
   });
 
   return (
-    <div style={{ padding: 20, maxWidth: 720, margin: "0 auto" }}>
+    <div style={{ padding: 20, maxWidth: 720, margin: "0 auto", fontFamily: "'Inter', 'Segoe UI', ui-sans-serif, sans-serif" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, fontSize: 13 }}>
         <div>
           Caja: <strong style={{ color: noSession ? colors.dangerText : colors.success }}>{noSession ? "SIN ABRIR" : cashStatus!.status}</strong>
@@ -360,13 +364,13 @@ export default function CashierScreen({ session }: { session: Session }) {
       )}
 
       <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
-        <div style={{ flex: 1, padding: 14, borderRadius: 10, border: `1px solid ${colors.border}`, background: colors.surface, textAlign: "center" }}>
-          <div style={{ fontSize: 20, fontWeight: 800, color: colors.accent }}>{occupiedTables.length}</div>
-          <div style={{ fontSize: 11, color: colors.textMuted }}>Mesas activas</div>
+        <div style={{ flex: 1, padding: 14, borderRadius: 12, border: `1px solid ${colors.border}`, background: colors.surface, textAlign: "center" }}>
+          <div style={{ fontSize: 22, fontWeight: 800, color: colors.text }}>{occupiedTables.length}</div>
+          <div style={{ fontSize: 11, color: colors.textMuted, marginTop: 2 }}>mesas activas</div>
         </div>
-        <div style={{ flex: 1, padding: 14, borderRadius: 10, border: `1px solid ${colors.border}`, background: colors.surface, textAlign: "center" }}>
-          <div style={{ fontSize: 20, fontWeight: 800, color: colors.accent }}>{money(pendingTotal)}</div>
-          <div style={{ fontSize: 11, color: colors.textMuted }}>Total pendiente</div>
+        <div style={{ flex: 1, padding: 14, borderRadius: 12, border: `1px solid ${colors.border}`, background: colors.surface, textAlign: "center" }}>
+          <div style={{ fontSize: 22, fontWeight: 800, color: colors.text }}>{money(pendingTotal)}</div>
+          <div style={{ fontSize: 11, color: colors.textMuted, marginTop: 2 }}>total pendiente</div>
         </div>
       </div>
 
@@ -413,23 +417,22 @@ export default function CashierScreen({ session }: { session: Session }) {
                 textAlign: "left",
                 padding: 10,
                 borderRadius: 10,
-                border: selected ? `2px solid ${colors.accent}` : `1px solid ${t.hasOpenAccount ? colors.success : colors.border}`,
-                background: t.hasOpenAccount ? "#20301F" : colors.surface,
-                color: colors.text,
+                border: selected ? `2px solid ${colors.accent}` : `1px solid ${t.hasOpenAccount ? occupiedGreenBorder : colors.border}`,
+                background: t.hasOpenAccount ? occupiedGreen : colors.surface,
+                color: t.hasOpenAccount ? "#FFFFFF" : colors.text,
                 cursor: "pointer",
               }}
             >
               <div style={{ fontSize: 18, fontWeight: 800 }}>{t.label}</div>
-              <div style={{ fontSize: 10, color: colors.textMuted, marginBottom: 4 }}>MESA</div>
               {t.hasOpenAccount ? (
                 <>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: colors.success }}>{money(t.total)}</div>
-                  <div style={{ fontSize: 10, color: colors.textMuted }}>
-                    {t.dinerCount} persona{t.dinerCount === 1 ? "" : "s"} · {t.openedAt ? timeAgo(t.openedAt) : ""}
+                  <div style={{ fontSize: 13, fontWeight: 800 }}>{money(t.total)}</div>
+                  <div style={{ fontSize: 10, color: "rgba(255,255,255,0.75)" }}>
+                    {t.dinerCount}p{t.openedAt ? ` · ${timeAgo(t.openedAt)}` : ""}
                   </div>
                 </>
               ) : (
-                <div style={{ fontSize: 11, color: colors.textMuted }}>● Libre</div>
+                <div style={{ fontSize: 10, color: colors.textMuted, fontWeight: 700, marginTop: 3 }}>LIBRE</div>
               )}
             </button>
           );
@@ -497,8 +500,15 @@ export default function CashierScreen({ session }: { session: Session }) {
               boxShadow: "0 20px 60px rgba(0,0,0,0.5)",
             }}
           >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-              <div style={{ fontWeight: 800, fontSize: 16 }}>Mesa {tableDetail?.tableLabel ?? "…"}</div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 17 }}>Mesa {tableDetail?.tableLabel ?? "…"}</div>
+                {tableDetail && (
+                  <div style={{ fontSize: 11, color: colors.textMuted, marginTop: 2 }}>
+                    {tableDetail.diners.length} persona{tableDetail.diners.length === 1 ? "" : "s"}
+                  </div>
+                )}
+              </div>
               <div style={{ fontSize: 11, color: colors.textMuted }}>{tableDetail?.openedAt ? timeAgo(tableDetail.openedAt) : ""}</div>
             </div>
 
@@ -506,21 +516,43 @@ export default function CashierScreen({ session }: { session: Session }) {
 
             {tableDetail && (
               <>
+                {(() => {
+                  const totalRemaining = tableDetail.diners.reduce((s, d) => s + Math.max(0, Number(d.remaining)), 0);
+                  if (totalRemaining <= 0) return null;
+                  const nothingPaidYet = tableDetail.diners.every((d) => Number(d.remaining) >= Number(d.amount));
+                  return (
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#332A1C", border: `1.5px solid ${colors.accent}`, borderRadius: 10, padding: "11px 13px", marginBottom: 12 }}>
+                      <div>
+                        <div style={{ fontSize: 12, fontWeight: 700 }}>Total mesa</div>
+                        <div style={{ fontSize: 10, color: colors.textMuted }}>{nothingPaidYet ? "Todo pendiente" : "Parcial pendiente"}</div>
+                      </div>
+                      <div style={{ fontSize: 18, fontWeight: 800, color: colors.accent }}>{money(totalRemaining)}</div>
+                    </div>
+                  );
+                })()}
+
                 <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
                   {tableDetail.diners.map((d, i) => {
                     const owed = Number(d.remaining) > 0;
                     return (
-                      <div key={d.dinerId} style={{ padding: 10, borderRadius: 8, border: `1px solid ${colors.border}`, background: colors.bg }}>
+                      <div key={d.dinerId} style={{ padding: 11, borderRadius: 10, border: `1px solid ${colors.border}`, background: colors.bg }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                          <div style={{ fontSize: 13 }}>
-                            <span style={{ color: colors.textMuted }}>#{i + 1}</span>{" "}
-                            <strong>{d.name || `Comensal ${i + 1}`}</strong>
-                            {d.descriptor && <span style={{ color: colors.textMuted }}> · {d.descriptor}</span>}
+                          <div>
+                            <div style={{ fontSize: 15, fontWeight: 800 }}>
+                              <span style={{ fontSize: 11, color: colors.textMuted, fontWeight: 400 }}>#{i + 1}</span> {money(d.remaining)}
+                            </div>
+                            <div style={{ fontSize: 12, color: colors.textMuted }}>
+                              {d.name || `Comensal ${i + 1}`}
+                              {d.descriptor && ` · ${d.descriptor}`}
+                            </div>
+                            <div style={{ fontSize: 10, color: colors.textDim, marginTop: 1 }}>{timeAgo(d.createdAt)}</div>
                           </div>
-                          <div style={{ fontWeight: 800 }}>{money(d.remaining)}</div>
+                          {owed ? null : (
+                            <div style={{ fontSize: 11, color: colors.textDim, fontWeight: 700 }}>{d.status === "CREDIT" ? "FIADO" : "PAGADO"}</div>
+                          )}
                         </div>
-                        {owed ? (
-                          fiarFor === d.obligationId ? (
+                        {owed &&
+                          (fiarFor === d.obligationId ? (
                             <div style={{ marginTop: 8 }}>
                               <input
                                 value={fiarName}
@@ -548,11 +580,11 @@ export default function CashierScreen({ session }: { session: Session }) {
                               </div>
                             </div>
                           ) : (
-                            <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                            <div style={{ display: "flex", gap: 6, marginTop: 8, justifyContent: "flex-end" }}>
                               <button
                                 onClick={() => cobrarObligation(d.obligationId, d.remaining)}
                                 disabled={loading}
-                                style={{ flex: 1, background: colors.success, color: colors.bg, border: "none", borderRadius: 6, padding: "6px 0", fontWeight: 700, fontSize: 12, cursor: "pointer" }}
+                                style={{ background: occupiedGreen, color: "#FFFFFF", border: "none", borderRadius: 6, padding: "8px 14px", fontWeight: 700, fontSize: 12, cursor: "pointer" }}
                               >
                                 Cobrar
                               </button>
@@ -563,15 +595,12 @@ export default function CashierScreen({ session }: { session: Session }) {
                                   setFiarPhone("");
                                 }}
                                 disabled={loading}
-                                style={{ flex: 1, background: "transparent", color: colors.accent, border: `1px solid ${colors.accent}`, borderRadius: 6, padding: "6px 0", fontWeight: 700, fontSize: 12, cursor: "pointer" }}
+                                style={{ background: "transparent", color: colors.info, border: `1px solid ${colors.info}`, borderRadius: 6, padding: "8px 14px", fontWeight: 700, fontSize: 12, cursor: "pointer" }}
                               >
                                 Fiar
                               </button>
                             </div>
-                          )
-                        ) : (
-                          <div style={{ marginTop: 6, fontSize: 11, color: colors.textDim }}>{d.status === "CREDIT" ? "FIADO" : "PAGADO"}</div>
-                        )}
+                          ))}
                       </div>
                     );
                   })}
@@ -612,16 +641,21 @@ export default function CashierScreen({ session }: { session: Session }) {
                   disabled={loading || tableDetail.diners.every((d) => Number(d.remaining) <= 0)}
                   style={{
                     width: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 7,
                     padding: 12,
-                    borderRadius: 8,
+                    borderRadius: 10,
                     border: "none",
-                    background: colors.success,
-                    color: colors.bg,
+                    background: occupiedGreen,
+                    color: "#FFFFFF",
                     fontWeight: 800,
                     marginBottom: 8,
                     cursor: "pointer",
                   }}
                 >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="2"><rect x="2" y="5" width="20" height="14" rx="2" /><path d="M2 10h20" /></svg>
                   Cobrar todo — {money(tableDetail.diners.reduce((s, d) => s + Math.max(0, Number(d.remaining)), 0))}
                 </button>
 
