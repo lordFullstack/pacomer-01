@@ -20,14 +20,6 @@ interface RecentPayment {
   table_labels: string[];
 }
 
-interface PendingVoidRequest {
-  id: string;
-  payment_id: string;
-  reason: string;
-  applied_amount: string;
-  requested_at: string;
-}
-
 interface CashStatus {
   sessionId: string | null;
   status: string;
@@ -60,16 +52,11 @@ interface TableDetail {
   diners: TableDiner[];
 }
 
-const SELF_VOID_WINDOW_SECONDS = 120;
-
 export default function CashierScreen({ session }: { session: Session }) {
   const [pending, setPending] = useState<PendingObligation[]>([]);
   const [recentPayments, setRecentPayments] = useState<RecentPayment[]>([]);
-  const [pendingVoidRequests, setPendingVoidRequests] = useState<PendingVoidRequest[]>([]);
   const [cashStatus, setCashStatus] = useState<CashStatus | null>(null);
   const [openingCash, setOpeningCash] = useState("");
-  const [voidReasonFor, setVoidReasonFor] = useState<string | null>(null);
-  const [voidReasonText, setVoidReasonText] = useState("");
   const [closeModalOpen, setCloseModalOpen] = useState(false);
   const [countedCash, setCountedCash] = useState("");
   const [ticket, setTicket] = useState<{ text: string; ok: boolean } | null>(null);
@@ -92,8 +79,6 @@ export default function CashierScreen({ session }: { session: Session }) {
 
   const [confirmRelease, setConfirmRelease] = useState(false);
 
-  const canAuthorize = session.role === "supervisor" || session.role === "admin";
-
   useEffect(() => {
     const t = setInterval(() => forceTick((n) => n + 1), 1000);
     return () => clearInterval(t);
@@ -101,24 +86,20 @@ export default function CashierScreen({ session }: { session: Session }) {
 
   const refresh = useCallback(async () => {
     try {
-      const calls = [
+      const [pendingRes, cashRes, paymentsRes, tablesRes] = await Promise.all([
         apiFetch(session, "/reports/pending-collections"),
         apiFetch(session, "/reports/cash-status"),
         apiFetch(session, "/payments/recent"),
         apiFetch(session, "/tables"),
-      ];
-      if (canAuthorize) calls.push(apiFetch(session, "/payments/void-requests/pending"));
-
-      const results = await Promise.all(calls);
-      setPending(results[0].obligations);
-      setCashStatus(results[1]);
-      setRecentPayments(results[2].payments);
-      setTables(results[3].tables);
-      if (canAuthorize) setPendingVoidRequests(results[4].requests);
+      ]);
+      setPending(pendingRes.obligations);
+      setCashStatus(cashRes);
+      setRecentPayments(paymentsRes.payments);
+      setTables(tablesRes.tables);
     } catch {
       /* transient errors during polling are fine to ignore */
     }
-  }, [session, canAuthorize]);
+  }, [session]);
 
   useEffect(() => {
     refresh();
@@ -315,63 +296,6 @@ export default function CashierScreen({ session }: { session: Session }) {
     return mins < 1 ? "Ahora" : `hace ${mins}m`;
   };
 
-  const canSelfVoid = (p: RecentPayment) =>
-    p.status === "ACTIVE" && p.created_by_user_id === session.userId && secondsSince(p.created_at) <= SELF_VOID_WINDOW_SECONDS;
-
-  const executeSelfVoid = async (paymentId: string) => {
-    setLoading(true);
-    try {
-      await apiFetch(session, `/payments/${paymentId}/void`, {
-        method: "POST",
-        body: JSON.stringify({ reason: "Auto-anulación dentro de la ventana de 120s" }),
-      });
-      setTicket({ ok: true, text: "Anulado." });
-      await refresh();
-    } catch (e: unknown) {
-      setTicket({ ok: false, text: e instanceof Error ? e.message : "Error" });
-    } finally {
-      setLoading(false);
-      setTimeout(() => setTicket(null), 2500);
-    }
-  };
-
-  const submitVoidRequest = async (paymentId: string) => {
-    if (!voidReasonText.trim()) return;
-    setLoading(true);
-    try {
-      await apiFetch(session, `/payments/${paymentId}/void`, {
-        method: "POST",
-        body: JSON.stringify({ reason: voidReasonText }),
-      });
-      setTicket({ ok: true, text: "Solicitud de anulación enviada." });
-      setVoidReasonFor(null);
-      setVoidReasonText("");
-      await refresh();
-    } catch (e: unknown) {
-      setTicket({ ok: false, text: e instanceof Error ? e.message : "Error" });
-    } finally {
-      setLoading(false);
-      setTimeout(() => setTicket(null), 2500);
-    }
-  };
-
-  const resolveVoidRequest = async (requestId: string, decision: "AUTHORIZED" | "DENIED") => {
-    setLoading(true);
-    try {
-      await apiFetch(session, `/payments/void-requests/${requestId}/authorize`, {
-        method: "POST",
-        body: JSON.stringify({ decision }),
-      });
-      setTicket({ ok: true, text: decision === "AUTHORIZED" ? "Anulación autorizada." : "Anulación denegada." });
-      await refresh();
-    } catch (e: unknown) {
-      setTicket({ ok: false, text: e instanceof Error ? e.message : "Error" });
-    } finally {
-      setLoading(false);
-      setTimeout(() => setTicket(null), 2500);
-    }
-  };
-
   const noSession = !cashStatus || cashStatus.status === "NO_SESSION";
   const occupiedTables = tables.filter((t) => t.hasOpenAccount);
   const pendingTotal = pending.reduce((s, o) => s + Number(o.remaining), 0);
@@ -513,271 +437,228 @@ export default function CashierScreen({ session }: { session: Session }) {
         {visibleTables.length === 0 && <div style={{ color: colors.textDim, fontSize: 13 }}>Sin mesas.</div>}
       </div>
 
-      {selectedTableId && (
-        <div style={{ padding: 16, borderRadius: 12, border: `1px solid ${colors.border}`, background: colors.surface, marginBottom: 20 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-            <div style={{ fontWeight: 800, fontSize: 16 }}>Mesa {tableDetail?.tableLabel ?? "…"}</div>
-            <div style={{ fontSize: 11, color: colors.textMuted }}>{tableDetail?.openedAt ? timeAgo(tableDetail.openedAt) : ""}</div>
+      <div style={{ fontSize: 12, color: colors.textMuted, margin: "18px 0 8px" }}>COBROS RECIENTES</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
+        {recentPayments.map((p) => (
+          <div
+            key={p.id}
+            style={{
+              padding: 10,
+              borderRadius: 10,
+              border: `1px solid ${colors.border}`,
+              background: p.status === "VOIDED" ? "#241C1A" : colors.surface,
+              opacity: p.status === "VOIDED" ? 0.6 : 1,
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, fontWeight: 700 }}>
+              <span>{p.table_labels.join(", ")}</span>
+              <span>{money(p.applied_amount)}</span>
+            </div>
+            {Number(p.change_amount) > 0 && <div style={{ fontSize: 11, color: colors.textMuted }}>cambio {money(p.change_amount)}</div>}
+            {p.status === "VOIDED" && <div style={{ fontSize: 11, color: colors.dangerText, marginTop: 4 }}>ANULADO</div>}
           </div>
+        ))}
+        {recentPayments.length === 0 && <div style={{ color: colors.textDim, fontSize: 13 }}>Aún no hay cobros.</div>}
+      </div>
+      <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 14 }}>
+        Las anulaciones se gestionan desde Reportes → Logs de anulaciones.
+      </div>
 
-          {detailLoading && <div style={{ color: colors.textDim, fontSize: 13, marginBottom: 10 }}>Cargando…</div>}
-
-          {tableDetail && (
-            <>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
-                {tableDetail.diners.map((d, i) => {
-                  const owed = Number(d.remaining) > 0;
-                  return (
-                    <div key={d.dinerId} style={{ padding: 10, borderRadius: 8, border: `1px solid ${colors.border}`, background: colors.bg }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <div style={{ fontSize: 13 }}>
-                          <span style={{ color: colors.textMuted }}>#{i + 1}</span>{" "}
-                          <strong>{d.name || `Comensal ${i + 1}`}</strong>
-                          {d.descriptor && <span style={{ color: colors.textMuted }}> · {d.descriptor}</span>}
-                        </div>
-                        <div style={{ fontWeight: 800 }}>{money(d.remaining)}</div>
-                      </div>
-                      {owed ? (
-                        fiarFor === d.obligationId ? (
-                          <div style={{ marginTop: 8 }}>
-                            <input
-                              value={fiarName}
-                              onChange={(e) => setFiarName(e.target.value)}
-                              placeholder="Nombre del cliente"
-                              style={{ width: "100%", boxSizing: "border-box", padding: 8, borderRadius: 6, background: colors.surface, border: `1px solid ${colors.border}`, color: colors.text, marginBottom: 6, fontSize: 12 }}
-                            />
-                            <input
-                              value={fiarPhone}
-                              onChange={(e) => setFiarPhone(e.target.value)}
-                              placeholder="Teléfono"
-                              style={{ width: "100%", boxSizing: "border-box", padding: 8, borderRadius: 6, background: colors.surface, border: `1px solid ${colors.border}`, color: colors.text, marginBottom: 6, fontSize: 12 }}
-                            />
-                            <div style={{ display: "flex", gap: 6 }}>
-                              <button
-                                onClick={() => fiarObligation(d.obligationId, d.remaining)}
-                                disabled={loading || !fiarName.trim() || !fiarPhone.trim()}
-                                style={{ ...btnPrimary, flex: 1, padding: "8px 0", fontSize: 12 }}
-                              >
-                                Confirmar fiado
-                              </button>
-                              <button onClick={() => setFiarFor(null)} style={{ ...btnGhost, flex: 1 }}>
-                                Cancelar
-                              </button>
-                            </div>
-                          </div>
-                        ) : (
-                          <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-                            <button
-                              onClick={() => cobrarObligation(d.obligationId, d.remaining)}
-                              disabled={loading}
-                              style={{ flex: 1, background: colors.success, color: colors.bg, border: "none", borderRadius: 6, padding: "6px 0", fontWeight: 700, fontSize: 12, cursor: "pointer" }}
-                            >
-                              Cobrar
-                            </button>
-                            <button
-                              onClick={() => {
-                                setFiarFor(d.obligationId);
-                                setFiarName("");
-                                setFiarPhone("");
-                              }}
-                              disabled={loading}
-                              style={{ flex: 1, background: "transparent", color: colors.accent, border: `1px solid ${colors.accent}`, borderRadius: 6, padding: "6px 0", fontWeight: 700, fontSize: 12, cursor: "pointer" }}
-                            >
-                              Fiar
-                            </button>
-                          </div>
-                        )
-                      ) : (
-                        <div style={{ marginTop: 6, fontSize: 11, color: colors.textDim }}>{d.status === "CREDIT" ? "FIADO" : "PAGADO"}</div>
-                      )}
-                    </div>
-                  );
-                })}
-                {tableDetail.diners.length === 0 && <div style={{ color: colors.textDim, fontSize: 13 }}>Sin comensales todavía.</div>}
-              </div>
-
-              <div style={{ fontSize: 11, color: colors.textMuted, marginBottom: 6, letterSpacing: 0.5 }}>+ AGREGAR PERSONA</div>
-              <input
-                value={addName}
-                onChange={(e) => setAddName(e.target.value)}
-                placeholder="Nombre (opcional)"
-                style={{ width: "100%", boxSizing: "border-box", padding: 8, borderRadius: 6, background: colors.bg, border: `1px solid ${colors.border}`, color: colors.text, marginBottom: 6, fontSize: 12 }}
-              />
-              <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
-                <input
-                  value={addAmount}
-                  onChange={(e) => setAddAmount(e.target.value.replace(/[^\d.]/g, ""))}
-                  placeholder="$0"
-                  style={{ flex: 1, boxSizing: "border-box", padding: 8, borderRadius: 6, background: colors.bg, border: `1px solid ${colors.border}`, color: colors.text, fontSize: 12 }}
-                />
-                <button
-                  onClick={addPersona}
-                  disabled={loading || !addAmount}
-                  style={{ padding: "0 16px", borderRadius: 6, border: "none", background: colors.accent, color: colors.bg, fontWeight: 700, fontSize: 12, cursor: "pointer" }}
-                >
-                  Agregar
-                </button>
-              </div>
-              <input
-                value={addNote}
-                onChange={(e) => setAddNote(e.target.value)}
-                placeholder="Nota (opcional)"
-                style={{ width: "100%", boxSizing: "border-box", padding: 8, borderRadius: 6, background: colors.bg, border: `1px solid ${colors.border}`, color: colors.text, marginBottom: 16, fontSize: 12 }}
-              />
-
-              <button
-                onClick={cobrarTodo}
-                disabled={loading || tableDetail.diners.every((d) => Number(d.remaining) <= 0)}
-                style={{
-                  width: "100%",
-                  padding: 12,
-                  borderRadius: 8,
-                  border: "none",
-                  background: colors.success,
-                  color: colors.bg,
-                  fontWeight: 800,
-                  marginBottom: 8,
-                  cursor: "pointer",
-                }}
-              >
-                Cobrar todo — {money(tableDetail.diners.reduce((s, d) => s + Math.max(0, Number(d.remaining)), 0))}
-              </button>
-
-              {confirmRelease ? (
-                <div style={{ marginBottom: 8 }}>
-                  <div style={{ fontSize: 12, color: colors.dangerText, marginBottom: 6 }}>
-                    ¿Liberar la mesa sin cobrar lo pendiente?
-                  </div>
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <button
-                      onClick={liberarSinCobrar}
-                      disabled={loading}
-                      style={{ flex: 1, background: colors.danger, color: colors.text, border: "none", borderRadius: 8, padding: "10px 0", fontWeight: 700, cursor: "pointer" }}
-                    >
-                      Sí, liberar
-                    </button>
-                    <button onClick={() => setConfirmRelease(false)} style={{ ...btnGhost, flex: 1 }}>
-                      Cancelar
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <button
-                  onClick={() => setConfirmRelease(true)}
-                  disabled={loading}
-                  style={{ width: "100%", background: "transparent", color: colors.dangerText, border: `1px solid ${colors.danger}`, borderRadius: 8, padding: "10px 0", fontWeight: 700, marginBottom: 8, cursor: "pointer" }}
-                >
-                  Liberar sin cobrar
-                </button>
-              )}
-
-              <button onClick={closeDetail} style={{ ...btnGhost, width: "100%", padding: "10px 0" }}>
-                Cerrar
-              </button>
-            </>
-          )}
+      {ticket && (
+        <div style={{ marginBottom: 14, padding: 10, borderRadius: 8, background: ticket.ok ? "#1E2A1D" : "#2A1D1A", color: ticket.ok ? colors.success : colors.dangerText, fontSize: 13 }}>
+          {ticket.text}
         </div>
       )}
 
-      <div style={{ fontSize: 12, color: colors.textMuted, margin: "18px 0 8px" }}>COBROS RECIENTES</div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
-        {recentPayments.map((p) => {
-          const secs = secondsSince(p.created_at);
-          const selfEligible = canSelfVoid(p);
-          const remainingWindow = Math.max(0, SELF_VOID_WINDOW_SECONDS - secs);
-          return (
-            <div
-              key={p.id}
-              style={{
-                padding: 10,
-                borderRadius: 10,
-                border: `1px solid ${colors.border}`,
-                background: p.status === "VOIDED" ? "#241C1A" : colors.surface,
-                opacity: p.status === "VOIDED" ? 0.6 : 1,
-              }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, fontWeight: 700 }}>
-                <span>{p.table_labels.join(", ")}</span>
-                <span>{money(p.applied_amount)}</span>
-              </div>
-              {Number(p.change_amount) > 0 && <div style={{ fontSize: 11, color: colors.textMuted }}>cambio {money(p.change_amount)}</div>}
+      {selectedTableId && (
+        <div
+          onClick={closeDetail}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.6)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+            zIndex: 1000,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "min(92vw, 440px)",
+              maxHeight: "88vh",
+              overflowY: "auto",
+              padding: 16,
+              borderRadius: 12,
+              border: `1px solid ${colors.border}`,
+              background: colors.surface,
+              boxShadow: "0 20px 60px rgba(0,0,0,0.5)",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+              <div style={{ fontWeight: 800, fontSize: 16 }}>Mesa {tableDetail?.tableLabel ?? "…"}</div>
+              <div style={{ fontSize: 11, color: colors.textMuted }}>{tableDetail?.openedAt ? timeAgo(tableDetail.openedAt) : ""}</div>
+            </div>
 
-              {p.status === "VOIDED" ? (
-                <div style={{ fontSize: 11, color: colors.dangerText, marginTop: 4 }}>ANULADO</div>
-              ) : selfEligible ? (
-                <button
-                  onClick={() => executeSelfVoid(p.id)}
-                  disabled={loading}
-                  style={{ marginTop: 6, width: "100%", background: colors.danger, color: colors.text, border: "none", borderRadius: 8, padding: "8px 0", fontWeight: 700, fontSize: 12, cursor: "pointer" }}
-                >
-                  Anular ({Math.ceil(remainingWindow)}s)
-                </button>
-              ) : voidReasonFor === p.id ? (
-                <div style={{ marginTop: 6 }}>
+            {detailLoading && <div style={{ color: colors.textDim, fontSize: 13, marginBottom: 10 }}>Cargando…</div>}
+
+            {tableDetail && (
+              <>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
+                  {tableDetail.diners.map((d, i) => {
+                    const owed = Number(d.remaining) > 0;
+                    return (
+                      <div key={d.dinerId} style={{ padding: 10, borderRadius: 8, border: `1px solid ${colors.border}`, background: colors.bg }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <div style={{ fontSize: 13 }}>
+                            <span style={{ color: colors.textMuted }}>#{i + 1}</span>{" "}
+                            <strong>{d.name || `Comensal ${i + 1}`}</strong>
+                            {d.descriptor && <span style={{ color: colors.textMuted }}> · {d.descriptor}</span>}
+                          </div>
+                          <div style={{ fontWeight: 800 }}>{money(d.remaining)}</div>
+                        </div>
+                        {owed ? (
+                          fiarFor === d.obligationId ? (
+                            <div style={{ marginTop: 8 }}>
+                              <input
+                                value={fiarName}
+                                onChange={(e) => setFiarName(e.target.value)}
+                                placeholder="Nombre del cliente"
+                                style={{ width: "100%", boxSizing: "border-box", padding: 8, borderRadius: 6, background: colors.surface, border: `1px solid ${colors.border}`, color: colors.text, marginBottom: 6, fontSize: 12 }}
+                              />
+                              <input
+                                value={fiarPhone}
+                                onChange={(e) => setFiarPhone(e.target.value)}
+                                placeholder="Teléfono"
+                                style={{ width: "100%", boxSizing: "border-box", padding: 8, borderRadius: 6, background: colors.surface, border: `1px solid ${colors.border}`, color: colors.text, marginBottom: 6, fontSize: 12 }}
+                              />
+                              <div style={{ display: "flex", gap: 6 }}>
+                                <button
+                                  onClick={() => fiarObligation(d.obligationId, d.remaining)}
+                                  disabled={loading || !fiarName.trim() || !fiarPhone.trim()}
+                                  style={{ ...btnPrimary, flex: 1, padding: "8px 0", fontSize: 12 }}
+                                >
+                                  Confirmar fiado
+                                </button>
+                                <button onClick={() => setFiarFor(null)} style={{ ...btnGhost, flex: 1 }}>
+                                  Cancelar
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                              <button
+                                onClick={() => cobrarObligation(d.obligationId, d.remaining)}
+                                disabled={loading}
+                                style={{ flex: 1, background: colors.success, color: colors.bg, border: "none", borderRadius: 6, padding: "6px 0", fontWeight: 700, fontSize: 12, cursor: "pointer" }}
+                              >
+                                Cobrar
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setFiarFor(d.obligationId);
+                                  setFiarName("");
+                                  setFiarPhone("");
+                                }}
+                                disabled={loading}
+                                style={{ flex: 1, background: "transparent", color: colors.accent, border: `1px solid ${colors.accent}`, borderRadius: 6, padding: "6px 0", fontWeight: 700, fontSize: 12, cursor: "pointer" }}
+                              >
+                                Fiar
+                              </button>
+                            </div>
+                          )
+                        ) : (
+                          <div style={{ marginTop: 6, fontSize: 11, color: colors.textDim }}>{d.status === "CREDIT" ? "FIADO" : "PAGADO"}</div>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {tableDetail.diners.length === 0 && <div style={{ color: colors.textDim, fontSize: 13 }}>Sin comensales todavía.</div>}
+                </div>
+
+                <div style={{ fontSize: 11, color: colors.textMuted, marginBottom: 6, letterSpacing: 0.5 }}>+ AGREGAR PERSONA</div>
+                <input
+                  value={addName}
+                  onChange={(e) => setAddName(e.target.value)}
+                  placeholder="Nombre (opcional)"
+                  style={{ width: "100%", boxSizing: "border-box", padding: 8, borderRadius: 6, background: colors.bg, border: `1px solid ${colors.border}`, color: colors.text, marginBottom: 6, fontSize: 12 }}
+                />
+                <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
                   <input
-                    value={voidReasonText}
-                    onChange={(e) => setVoidReasonText(e.target.value)}
-                    placeholder="Motivo de anulación"
-                    style={{ width: "100%", boxSizing: "border-box", background: colors.bg, border: `1px solid ${colors.border}`, borderRadius: 6, color: colors.text, padding: "6px 8px", fontSize: 12, marginBottom: 4 }}
+                    value={addAmount}
+                    onChange={(e) => setAddAmount(e.target.value.replace(/[^\d.]/g, ""))}
+                    placeholder="$0"
+                    style={{ flex: 1, boxSizing: "border-box", padding: 8, borderRadius: 6, background: colors.bg, border: `1px solid ${colors.border}`, color: colors.text, fontSize: 12 }}
                   />
                   <button
-                    onClick={() => submitVoidRequest(p.id)}
-                    disabled={loading}
-                    style={{ width: "100%", background: colors.danger, color: colors.text, border: "none", borderRadius: 8, padding: "8px 0", fontWeight: 700, fontSize: 12, cursor: "pointer" }}
+                    onClick={addPersona}
+                    disabled={loading || !addAmount}
+                    style={{ padding: "0 16px", borderRadius: 6, border: "none", background: colors.accent, color: colors.bg, fontWeight: 700, fontSize: 12, cursor: "pointer" }}
                   >
-                    Enviar solicitud
+                    Agregar
                   </button>
                 </div>
-              ) : (
+                <input
+                  value={addNote}
+                  onChange={(e) => setAddNote(e.target.value)}
+                  placeholder="Nota (opcional)"
+                  style={{ width: "100%", boxSizing: "border-box", padding: 8, borderRadius: 6, background: colors.bg, border: `1px solid ${colors.border}`, color: colors.text, marginBottom: 16, fontSize: 12 }}
+                />
+
                 <button
-                  onClick={() => setVoidReasonFor(p.id)}
-                  style={{ marginTop: 6, width: "100%", background: "transparent", color: colors.textMuted, border: `1px solid ${colors.border}`, borderRadius: 8, padding: "6px 0", fontSize: 11, cursor: "pointer" }}
+                  onClick={cobrarTodo}
+                  disabled={loading || tableDetail.diners.every((d) => Number(d.remaining) <= 0)}
+                  style={{
+                    width: "100%",
+                    padding: 12,
+                    borderRadius: 8,
+                    border: "none",
+                    background: colors.success,
+                    color: colors.bg,
+                    fontWeight: 800,
+                    marginBottom: 8,
+                    cursor: "pointer",
+                  }}
                 >
-                  Solicitar anulación
+                  Cobrar todo — {money(tableDetail.diners.reduce((s, d) => s + Math.max(0, Number(d.remaining)), 0))}
                 </button>
-              )}
-            </div>
-          );
-        })}
-        {recentPayments.length === 0 && <div style={{ color: colors.textDim, fontSize: 13 }}>Aún no hay cobros.</div>}
-      </div>
 
-      {canAuthorize && (
-        <>
-          <div style={{ fontSize: 12, color: colors.textMuted, margin: "18px 0 8px" }}>
-            AUTORIZACIONES PENDIENTES ({pendingVoidRequests.length})
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {pendingVoidRequests.map((vr) => (
-              <div key={vr.id} style={{ padding: 10, borderRadius: 10, border: `1px solid ${colors.accent}`, background: "#2B2416" }}>
-                <div style={{ fontSize: 13, fontWeight: 700 }}>{money(vr.applied_amount)}</div>
-                <div style={{ fontSize: 11, color: colors.textMuted, margin: "4px 0" }}>{vr.reason}</div>
-                <div style={{ display: "flex", gap: 6 }}>
+                {confirmRelease ? (
+                  <div style={{ marginBottom: 8 }}>
+                    <div style={{ fontSize: 12, color: colors.dangerText, marginBottom: 6 }}>
+                      ¿Liberar la mesa sin cobrar lo pendiente?
+                    </div>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <button
+                        onClick={liberarSinCobrar}
+                        disabled={loading}
+                        style={{ flex: 1, background: colors.danger, color: colors.text, border: "none", borderRadius: 8, padding: "10px 0", fontWeight: 700, cursor: "pointer" }}
+                      >
+                        Sí, liberar
+                      </button>
+                      <button onClick={() => setConfirmRelease(false)} style={{ ...btnGhost, flex: 1 }}>
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                ) : (
                   <button
-                    onClick={() => resolveVoidRequest(vr.id, "AUTHORIZED")}
+                    onClick={() => setConfirmRelease(true)}
                     disabled={loading}
-                    style={{ ...btnPrimary, flex: 1, padding: "6px 0", fontSize: 12 }}
+                    style={{ width: "100%", background: "transparent", color: colors.dangerText, border: `1px solid ${colors.danger}`, borderRadius: 8, padding: "10px 0", fontWeight: 700, marginBottom: 8, cursor: "pointer" }}
                   >
-                    Autorizar
+                    Liberar sin cobrar
                   </button>
-                  <button
-                    onClick={() => resolveVoidRequest(vr.id, "DENIED")}
-                    disabled={loading}
-                    style={{ flex: 1, background: "transparent", color: colors.textMuted, border: `1px solid ${colors.border}`, borderRadius: 8, padding: "6px 0", fontSize: 12, cursor: "pointer" }}
-                  >
-                    Denegar
-                  </button>
-                </div>
-              </div>
-            ))}
-            {pendingVoidRequests.length === 0 && <div style={{ color: colors.textDim, fontSize: 12 }}>Sin solicitudes.</div>}
-          </div>
-        </>
-      )}
+                )}
 
-      {ticket && (
-        <div style={{ marginTop: 14, padding: 10, borderRadius: 8, background: ticket.ok ? "#1E2A1D" : "#2A1D1A", color: ticket.ok ? colors.success : colors.dangerText, fontSize: 13 }}>
-          {ticket.text}
+                <button onClick={closeDetail} style={{ ...btnGhost, width: "100%", padding: "10px 0" }}>
+                  Cerrar
+                </button>
+              </>
+            )}
+          </div>
         </div>
       )}
     </div>

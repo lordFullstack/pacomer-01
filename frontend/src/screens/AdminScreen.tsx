@@ -9,7 +9,7 @@ import ReceiptsScreen from "./admin/ReceiptsScreen";
 
 type Tab = "reportes" | "clientes" | "proveedores" | "creditos" | "recibos";
 
-const tabs: Array<{ key: Tab; label: string }> = [
+const allTabs: Array<{ key: Tab; label: string }> = [
   { key: "reportes", label: "Reportes" },
   { key: "clientes", label: "Clientes" },
   { key: "proveedores", label: "Proveedores" },
@@ -20,11 +20,13 @@ const tabs: Array<{ key: Tab; label: string }> = [
 /**
  * Panel administrativo — agrupa las secciones que no forman parte del
  * flujo diario de servidor/cajero: reportes, clientes, proveedores,
- * créditos y recibos. Visible solo para supervisor/admin (controlado en
- * App.tsx, que hasta ahora nunca montaba esta pantalla).
+ * créditos y recibos. Un cajero solo ve "Reportes" (ahí vive el log de
+ * anulaciones, que ahora es la única forma de anular un cobro); el resto
+ * de pestañas sigue siendo exclusivo de supervisor/admin.
  */
 export default function AdminScreen({ session }: { session: Session }) {
   const [tab, setTab] = useState<Tab>("reportes");
+  const tabs = session.role === "cajero" ? allTabs.filter((t) => t.key === "reportes") : allTabs;
 
   return (
     <div>

@@ -21,7 +21,9 @@ export default function App() {
 
   const canSeeServer = session.role === "servidor" || session.role === "admin";
   const canSeeCashier = ["cajero", "supervisor", "admin"].includes(session.role);
-  const canSeeAdmin = session.role === "supervisor" || session.role === "admin";
+  // cajero also needs Reportes → Logs de anulaciones (AdminScreen restricts
+  // which of its own tabs a cajero sees; only supervisor/admin get the rest).
+  const canSeeAdmin = ["cajero", "supervisor", "admin"].includes(session.role);
   const availableViews = [
     canSeeCashier && ("cajero" as const),
     canSeeServer && ("servidor" as const),

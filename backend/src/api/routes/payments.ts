@@ -57,6 +57,71 @@ router.get("/recent", authenticate, requireRole("cajero", "supervisor", "admin")
 });
 
 /**
+ * GET /payments/log?date=YYYY-MM-DD — full payment log for one day (default
+ * today), each with its latest void request if any. Feeds the "Logs de
+ * anulaciones" section in Reportes (grouped by mesa/día client-side) — the
+ * single place cajero/supervisor/admin now request or authorize a void,
+ * replacing the old inline "Cobros recientes" anular buttons.
+ */
+router.get("/log", authenticate, requireRole("cajero", "supervisor", "admin"), async (req, res, next) => {
+  try {
+    const date = typeof req.query.date === "string" ? req.query.date : new Date().toISOString().slice(0, 10);
+    const result = await pool.query(
+      `SELECT
+          p.id, p.status, p.amount AS applied_amount, p.created_by_user_id, p.created_at,
+          coalesce(c.amount, 0) AS change_amount,
+          array_agg(DISTINCT t.label) AS table_labels,
+          vr.id AS void_request_id, vr.status AS void_status, vr.reason AS void_reason,
+          vr.requested_by_user_id AS void_requested_by, vr.authorized_by_user_id AS void_authorized_by,
+          vr.requested_at AS void_requested_at, vr.resolved_at AS void_resolved_at
+       FROM payments p
+       LEFT JOIN changes c ON c.payment_id = p.id
+       JOIN payment_allocations pa ON pa.payment_id = p.id
+       JOIN payment_obligations po ON po.id = pa.obligation_id
+       JOIN diners d ON d.id = po.diner_id
+       JOIN table_sessions ts ON ts.id = d.table_session_id
+       JOIN tables t ON t.id = ts.table_id
+       LEFT JOIN LATERAL (
+         SELECT * FROM payment_void_requests
+         WHERE payment_id = p.id
+         ORDER BY requested_at DESC
+         LIMIT 1
+       ) vr ON true
+       WHERE p.tenant_id = $1 AND p.created_at::date = $2::date
+       GROUP BY p.id, c.amount, vr.id, vr.status, vr.reason, vr.requested_by_user_id,
+                vr.authorized_by_user_id, vr.requested_at, vr.resolved_at
+       ORDER BY p.created_at DESC`,
+      [req.user!.tenantId, date]
+    );
+    res.json({
+      date,
+      payments: result.rows.map((r) => ({
+        id: r.id,
+        status: r.status,
+        applied_amount: r.applied_amount,
+        change_amount: r.change_amount,
+        created_by_user_id: r.created_by_user_id,
+        created_at: r.created_at,
+        table_labels: r.table_labels,
+        voidRequest: r.void_request_id
+          ? {
+              id: r.void_request_id,
+              status: r.void_status,
+              reason: r.void_reason,
+              requestedByUserId: r.void_requested_by,
+              authorizedByUserId: r.void_authorized_by,
+              requestedAt: r.void_requested_at,
+              resolvedAt: r.void_resolved_at,
+            }
+          : null,
+      })),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
  * GET /payments/void-requests/pending — feeds the supervisor/admin
  * authorization panel (BR-017).
  */
