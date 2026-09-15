@@ -80,7 +80,7 @@ export default function ServerScreen({ session }: { session: Session }) {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(52px, 1fr))",
+            gridTemplateColumns: "repeat(auto-fill, minmax(65px, 1fr))",
             gap: 8,
           }}
         >
@@ -97,7 +97,7 @@ export default function ServerScreen({ session }: { session: Session }) {
                   background: t.hasOpenAccount ? colors.success : colors.surface,
                   color: t.hasOpenAccount ? colors.bg : colors.text,
                   fontWeight: 700,
-                  fontSize: 14,
+                  fontSize: 18,
                   cursor: "pointer",
                 }}
               >
