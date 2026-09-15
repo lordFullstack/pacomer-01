@@ -44,8 +44,8 @@ export default function App() {
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: colors.bg, color: colors.text, fontFamily: "'Segoe UI', ui-sans-serif, sans-serif" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 20px", borderBottom: `1px solid ${colors.border}` }}>
+    <div style={{ height: "100dvh", display: "flex", flexDirection: "column", background: colors.bg, color: colors.text, fontFamily: "'Segoe UI', ui-sans-serif, sans-serif" }}>
+      <div style={{ flexShrink: 0, display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 20px", borderBottom: `1px solid ${colors.border}` }}>
         <div style={{ fontWeight: 800 }}>FAST TRACK</div>
         <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12, color: colors.textMuted }}>
           {session.email} · {session.role}
@@ -70,7 +70,7 @@ export default function App() {
           </button>
         </div>
       </div>
-      {screens[effectiveView]}
+      <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>{screens[effectiveView]}</div>
     </div>
   );
 }

@@ -60,55 +60,69 @@ export default function ServerScreen({ session }: { session: Session }) {
     }
   };
 
+  const sectionLabel: React.CSSProperties = { fontSize: 11, color: colors.textMuted, marginBottom: 4, letterSpacing: 0.5 };
+
   return (
-    <div style={{ padding: 20, maxWidth: 420, margin: "0 auto" }}>
-      <div style={{ fontSize: 12, color: colors.textMuted, marginBottom: 8, letterSpacing: 0.5 }}>
-        MESA
-      </div>
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(52px, 1fr))",
-          gap: 8,
-          marginBottom: 16,
-        }}
-      >
-        {tables.map((t) => {
-          const selected = t.id === tableId;
-          return (
-            <button
-              key={t.id}
-              onClick={() => setTableId(t.id)}
-              style={{
-                aspectRatio: "1 / 1",
-                borderRadius: 8,
-                border: selected ? `2px solid ${colors.accent}` : "1px solid transparent",
-                background: t.hasOpenAccount ? colors.success : colors.surface,
-                color: t.hasOpenAccount ? colors.bg : colors.text,
-                fontWeight: 700,
-                fontSize: 14,
-                cursor: "pointer",
-              }}
-            >
-              {t.label}
-            </button>
-          );
-        })}
+    <div
+      style={{
+        height: "100%",
+        boxSizing: "border-box",
+        padding: "10px 16px 12px",
+        maxWidth: 420,
+        margin: "0 auto",
+        display: "flex",
+        flexDirection: "column",
+        gap: 8,
+      }}
+    >
+      <div>
+        <div style={sectionLabel}>MESA</div>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(48px, 1fr))",
+            gap: 6,
+          }}
+        >
+          {tables.map((t) => {
+            const selected = t.id === tableId;
+            return (
+              <button
+                key={t.id}
+                onClick={() => setTableId(t.id)}
+                style={{
+                  padding: "6px 2px",
+                  borderRadius: 6,
+                  border: selected ? `2px solid ${colors.accent}` : "1px solid transparent",
+                  background: t.hasOpenAccount ? colors.success : colors.surface,
+                  color: t.hasOpenAccount ? colors.bg : colors.text,
+                  fontWeight: 700,
+                  fontSize: 12,
+                  lineHeight: 1.2,
+                  cursor: "pointer",
+                }}
+              >
+                {t.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+      <div style={{ display: "flex", gap: 8 }}>
         {(["individual", "conjunto"] as const).map((m) => (
           <button
             key={m}
             onClick={() => setPaymentMode(m)}
             style={{
               flex: 1,
-              padding: 10,
+              padding: 8,
               borderRadius: 8,
               border: paymentMode === m ? `2px solid ${colors.secondary}` : `1px solid ${colors.border}`,
               background: paymentMode === m ? colors.secondary : colors.surface,
               color: paymentMode === m ? colors.bg : colors.text,
               fontWeight: 700,
+              fontSize: 13,
               textTransform: "capitalize",
             }}
           >
@@ -117,59 +131,63 @@ export default function ServerScreen({ session }: { session: Session }) {
         ))}
       </div>
 
-      <div style={{ fontSize: 12, color: colors.textMuted, marginBottom: 8, letterSpacing: 0.5 }}>
-        NOMBRE <span style={{ color: colors.textDim, fontWeight: 400 }}>(opcional)</span>
+      <div>
+        <div style={sectionLabel}>
+          NOMBRE <span style={{ color: colors.textDim, fontWeight: 400 }}>(opcional)</span>
+        </div>
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Nombre del comensal"
+          style={{ ...inputStyle, padding: "8px 12px" }}
+        />
       </div>
-      <input
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        placeholder="Nombre del comensal"
-        style={{ ...inputStyle, marginBottom: 16 }}
-      />
 
-      <div style={{ fontSize: 12, color: colors.textMuted, marginBottom: 8, letterSpacing: 0.5 }}>
-        VALOR
+      <div>
+        <div style={sectionLabel}>VALOR</div>
+        <input
+          value={amount}
+          onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ""))}
+          placeholder="$0"
+          style={{
+            ...inputStyle,
+            padding: "8px 12px",
+            fontSize: 22,
+            fontWeight: 800,
+            textAlign: "right",
+          }}
+        />
       </div>
-      <input
-        value={amount}
-        onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ""))}
-        placeholder="$0"
-        style={{
-          ...inputStyle,
-          marginBottom: 16,
-          fontSize: 24,
-          fontWeight: 800,
-          textAlign: "right",
-        }}
-      />
 
-      <div style={{ fontSize: 12, color: colors.textMuted, marginBottom: 8, letterSpacing: 0.5 }}>
-        NOTA <span style={{ color: colors.textDim, fontWeight: 400 }}>(opcional)</span>
+      <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+        <div style={sectionLabel}>
+          NOTA <span style={{ color: colors.textDim, fontWeight: 400 }}>(opcional)</span>
+        </div>
+        <textarea
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="Sin sal, apurado…"
+          style={{ ...inputStyle, padding: "8px 12px", resize: "none", fontFamily: "inherit", flex: 1, minHeight: 36 }}
+        />
       </div>
-      <textarea
-        value={note}
-        onChange={(e) => setNote(e.target.value)}
-        placeholder="Sin sal, apurado…"
-        rows={3}
-        style={{ ...inputStyle, marginBottom: 24, resize: "none", fontFamily: "inherit" }}
-      />
 
-      <button onClick={submit} disabled={submitting || !tableId || !amount} style={{ ...btnPrimary, width: "100%", opacity: submitting ? 0.6 : 1, marginBottom: 10 }}>
-        {submitting ? "REGISTRANDO…" : "✓ Registrar"}
-      </button>
-      <button onClick={reset} disabled={submitting} style={{ ...btnGhost, width: "100%", padding: "12px 0", fontSize: 14, fontWeight: 700 }}>
-        Limpiar
-      </button>
+      <div style={{ display: "flex", gap: 8 }}>
+        <button onClick={reset} disabled={submitting} style={{ ...btnGhost, flex: 1, padding: "10px 0", fontSize: 14, fontWeight: 700 }}>
+          Limpiar
+        </button>
+        <button onClick={submit} disabled={submitting || !tableId || !amount} style={{ ...btnPrimary, flex: 2, padding: "10px 0", opacity: submitting ? 0.6 : 1 }}>
+          {submitting ? "REGISTRANDO…" : "✓ Registrar"}
+        </button>
+      </div>
 
       {feedback && (
         <div
           style={{
-            marginTop: 12,
-            padding: 10,
+            padding: 8,
             borderRadius: 8,
             background: feedback.ok ? "#1E2A1D" : "#2A1D1A",
             color: feedback.ok ? colors.success : colors.dangerText,
-            fontSize: 13,
+            fontSize: 12,
           }}
         >
           {feedback.text}
